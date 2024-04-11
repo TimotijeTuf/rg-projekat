@@ -204,9 +204,9 @@ int main() {
 
     //textures
     unsigned int boatDiffuse = loadTexture(FileSystem::getPath("resources/objects/simple_boat/textures/Material.002_diffuse.png").c_str(), true);
-    unsigned int boatSpecular = loadTexture(FileSystem::getPath("resources/objects/simple_boat/textures/SpecularMap.png").c_str(), false);
-    unsigned int boatNormal = loadTexture(FileSystem::getPath("resources/objects/simple_boat/textures/NormalMap.png").c_str(), false);
-    unsigned int boatDisp = loadTexture(FileSystem::getPath("resources/objects/simple_boat/textures/DisplacementMap.png").c_str(), false);
+    unsigned int boatSpecular = loadTexture(FileSystem::getPath("resources/textures/SpecularMap.png").c_str(), false);
+    unsigned int boatNormal = loadTexture(FileSystem::getPath("resources/textures/NormalMap.png").c_str(), false);
+    unsigned int boatDisp = loadTexture(FileSystem::getPath("resources/textures/HeightMap.png").c_str(), false);
 
     // set up vertex data (and buffer(s)) and configure vertex attributes
     // ------------------------------------------------------------------
@@ -437,7 +437,7 @@ int main() {
         // bind normal map
         glActiveTexture(GL_TEXTURE2);
         glBindTexture(GL_TEXTURE_2D, boatNormal);
-        // bind displacment map
+        // bind height map
         glActiveTexture(GL_TEXTURE3);
         glBindTexture(GL_TEXTURE_2D, boatDisp);
         renderQuad();
@@ -581,7 +581,7 @@ int main() {
         lightCubeShader.setMat4("model", model);
 
         glBindVertexArray(lightCubeVAO);
-        glDrawArrays(GL_TRIANGLES, 0, 36);
+        //glDrawArrays(GL_TRIANGLES, 0, 36);
 
         // draw skybox as last
         glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
