@@ -1,6 +1,6 @@
 # Shrek Swamp
 
-![Shrek Swamp](https://imgur.com/tjrLILn)
+![Shrek Swamp](https://i.imgur.com/tjrLILn.png)
 
 
 Move with WASD
