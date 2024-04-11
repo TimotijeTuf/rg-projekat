@@ -28,6 +28,8 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
 
 unsigned int loadCubemap(vector<std::string> faces);
 
+unsigned int loadTexture(const char *path, bool gammaCorrection);
+void renderQuad();
 
 // settings
 const unsigned int SCR_WIDTH = 800;
@@ -41,11 +43,12 @@ bool firstMouse = true;
 
 // light
 bool blinn = false;
-bool blinnKeyPressed = false;
 
 // timing
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
+
+float heightScale = 0.001f;
 
 struct PointLight {
     glm::vec3 position;
@@ -188,12 +191,22 @@ int main() {
     Model shrekModel("resources/objects/shrek/scene.gltf");
     shrekModel.SetShaderTextureNamePrefix("material.");
 
+    Model boatModel("resources/objects/simple_boat/scene.gltf");
+    boatModel.SetShaderTextureNamePrefix("material.");
+
     // build and compile our shader program
     // ------------------------------------
     Shader lightCubeShader("resources/shaders/1.light_cube.vs", "resources/shaders/1.light_cube.fs");
 
     Shader skyboxShader("resources/shaders/skybox.vs", "resources/shaders/skybox.fs");
 
+    Shader normalMapping("resources/shaders/mapping.vs", "resources/shaders/mapping.fs");
+
+    //textures
+    unsigned int boatDiffuse = loadTexture(FileSystem::getPath("resources/objects/simple_boat/textures/Material.002_diffuse.png").c_str(), true);
+    unsigned int boatSpecular = loadTexture(FileSystem::getPath("resources/textures/SpecularMap.png").c_str(), false);
+    unsigned int boatNormal = loadTexture(FileSystem::getPath("resources/textures/NormalMap.png").c_str(), false);
+    unsigned int boatDisp = loadTexture(FileSystem::getPath("resources/textures/HeightMap.png").c_str(), false);
 
     // set up vertex data (and buffer(s)) and configure vertex attributes
     // ------------------------------------------------------------------
@@ -370,8 +383,65 @@ int main() {
         glClearColor(programState->clearColor.r, programState->clearColor.g, programState->clearColor.b, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        //Normal mapping
+        normalMapping.use();
+        //pointLight.position = glm::vec3(4.0 * cos(currentFrame), 4.0f, 4.0 * sin(currentFrame));
+        normalMapping.setVec3("pointLight.position", pointLight.position);
+        normalMapping.setVec3("pointLight.ambient", pointLight.ambient);
+        normalMapping.setVec3("pointLight.diffuse", pointLight.diffuse);
+        normalMapping.setVec3("pointLight.specular", pointLight.specular);
+        normalMapping.setFloat("pointLight.constant", pointLight.constant);
+        normalMapping.setFloat("pointLight.linear", pointLight.linear);
+        normalMapping.setFloat("pointLight.quadratic", pointLight.quadratic);
+        normalMapping.setVec3("viewPos", programState->camera.Position);
+        normalMapping.setFloat("material.shininess", 32.0f);
+        normalMapping.setVec3("spotLight.position", glm::vec3(5.0f));
+        normalMapping.setVec3("spotLight.direction", glm::vec3(-5.0f));
+        normalMapping.setVec3("spotLight.ambient", glm::vec3(0.1f,0.1f,0.1f));
+        normalMapping.setVec3("spotLight.diffuse", glm::vec3(0.3f,0.3f,0.3f));
+        normalMapping.setVec3("spotLight.specular", glm::vec3(0.2f,0.2f,0.2f));
+        normalMapping.setFloat("spotLight.constant", pointLight.constant);
+        normalMapping.setFloat("spotLight.linear", pointLight.linear);
+        normalMapping.setFloat("spotLight.quadratic", pointLight.quadratic);
+        normalMapping.setFloat("spotLight.cutOff", glm::cos(glm::radians(40.0f)));
+        normalMapping.setFloat("spotLight.outerCutOff", glm::cos(glm::radians(45.0f)));
+        normalMapping.setVec3("dirLight.direction", glm::vec3(0.0f,-1.0f,0.0f));
+        normalMapping.setVec3("dirLight.ambient", glm::vec3(0.1f,0.1f,0.1f));
+        normalMapping.setVec3("dirLight.diffuse", glm::vec3(0.5f,0.3f,0.3f));
+        normalMapping.setVec3("dirLight.specular", glm::vec3(0.2f,0.2f,0.2f));
+        normalMapping.setFloat("heightScale", heightScale);
+        // view/projection transformations
+        glm::mat4 projection = glm::perspective(glm::radians(programState->camera.Zoom),
+                                                (float) SCR_WIDTH / (float) SCR_HEIGHT, 0.1f, 100.0f);
+        glm::mat4 view = programState->camera.GetViewMatrix();
+        normalMapping.setMat4("projection", projection);
+        normalMapping.setMat4("view", view);
 
+        //render boat
+        glm::mat4 modelBoat = glm::mat4(1.0f);
+        modelBoat = glm::translate(modelBoat, glm::vec3(4.4f, 1.7f, -16.7f));
+        modelBoat = glm::rotate(modelBoat, glm::radians(60.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        modelBoat = glm::scale(modelBoat, glm::vec3(0.2f));
+        normalMapping.setMat4("model", modelBoat);
 
+        normalMapping.setInt("material.diffuse", 0);
+        normalMapping.setInt("material.specular", 1);
+        normalMapping.setInt("material.normal", 2);
+        normalMapping.setInt("material.texture_depth", 3);
+        // bind diffuse map
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, boatDiffuse);
+        // bind specular map
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, boatSpecular);
+        // bind normal map
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, boatNormal);
+        // bind height map
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, boatDisp);
+        renderQuad();
+        boatModel.Draw(normalMapping);
 
         // don't forget to enable shader before setting uniforms
         ourShader.use();
@@ -386,9 +456,9 @@ int main() {
         ourShader.setVec3("viewPosition", programState->camera.Position);
         ourShader.setFloat("material.shininess", 32.0f);
         // view/projection transformations
-        glm::mat4 projection = glm::perspective(glm::radians(programState->camera.Zoom),
+        projection = glm::perspective(glm::radians(programState->camera.Zoom),
                                                 (float) SCR_WIDTH / (float) SCR_HEIGHT, 0.1f, 100.0f);
-        glm::mat4 view = programState->camera.GetViewMatrix();
+        view = programState->camera.GetViewMatrix();
         ourShader.setMat4("projection", projection);
         ourShader.setMat4("view", view);
 
@@ -484,6 +554,15 @@ int main() {
         ourShader.setMat4("model", modelShrek);
         shrekModel.Draw(ourShader);
 
+        //render boat
+        /*
+        glm::mat4 modelBoat = glm::mat4(1.0f);
+        modelBoat = glm::translate(modelBoat, glm::vec3(4.4f, 1.7f, -16.7f));
+        modelBoat = glm::rotate(modelBoat, glm::radians(60.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        modelBoat = glm::scale(modelBoat, glm::vec3(0.2f));
+        ourShader.setMat4("model", modelBoat);
+        boatModel.Draw(ourShader);
+        */
 
         //if (programState->ImGuiEnabled)
             //DrawImGui(programState);
@@ -502,7 +581,7 @@ int main() {
         lightCubeShader.setMat4("model", model);
 
         glBindVertexArray(lightCubeVAO);
-        glDrawArrays(GL_TRIANGLES, 0, 36);
+        //glDrawArrays(GL_TRIANGLES, 0, 36);
 
         // draw skybox as last
         glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
@@ -552,15 +631,6 @@ void processInput(GLFWwindow *window) {
         programState->camera.ProcessKeyboard(LEFT, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
         programState->camera.ProcessKeyboard(RIGHT, deltaTime);
-
-    //Blinn-Phong
-    if (glfwGetKey(window, GLFW_KEY_B) == GLFW_PRESS && !blinnKeyPressed){
-        blinn = !blinn;
-        blinnKeyPressed = true;
-    }
-    if (glfwGetKey(window, GLFW_KEY_B) == GLFW_RELEASE){
-        blinnKeyPressed = false;
-    }
 }
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes
@@ -672,4 +742,140 @@ unsigned int loadCubemap(vector<std::string> faces)
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 
     return textureID;
+}
+
+unsigned int loadTexture(char const * path, bool gammaCorrection)
+{
+    unsigned int textureID;
+    glGenTextures(1, &textureID);
+
+    int width, height, nrComponents;
+    unsigned char *data = stbi_load(path, &width, &height, &nrComponents, 0);
+    if (data)
+    {
+        GLenum internalFormat;
+        GLenum dataFormat;
+        if (nrComponents == 1)
+        {
+            internalFormat = dataFormat = GL_RED;
+        }
+        else if (nrComponents == 3)
+        {
+            internalFormat = gammaCorrection ? GL_SRGB : GL_RGB;
+            dataFormat = GL_RGB;
+        }
+        else if (nrComponents == 4)
+        {
+            internalFormat = gammaCorrection ? GL_SRGB_ALPHA : GL_RGBA;
+            dataFormat = GL_RGBA;
+        }
+
+        glBindTexture(GL_TEXTURE_2D, textureID);
+        glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width, height, 0, dataFormat, GL_UNSIGNED_BYTE, data);
+        glGenerateMipmap(GL_TEXTURE_2D);
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        stbi_image_free(data);
+    }
+    else
+    {
+        std::cout << "Texture failed to load at path: " << path << std::endl;
+        stbi_image_free(data);
+    }
+
+    return textureID;
+}
+
+unsigned int quadVAO = 0;
+unsigned int quadVBO;
+void renderQuad()
+{
+    if (quadVAO == 0)
+    {
+        // positions
+        glm::vec3 pos1(-1.0f,  1.0f, 0.0f);
+        glm::vec3 pos2(-1.0f, -1.0f, 0.0f);
+        glm::vec3 pos3( 1.0f, -1.0f, 0.0f);
+        glm::vec3 pos4( 1.0f,  1.0f, 0.0f);
+        // texture coordinates
+        glm::vec2 uv1(0.0f, 1.0f);
+        glm::vec2 uv2(0.0f, 0.0f);
+        glm::vec2 uv3(1.0f, 0.0f);
+        glm::vec2 uv4(1.0f, 1.0f);
+        // normal vector
+        glm::vec3 nm(0.0f, 0.0f, 1.0f);
+
+        // calculate tangent/bitangent vectors of both triangles
+        glm::vec3 tangent1, bitangent1;
+        glm::vec3 tangent2, bitangent2;
+        // triangle 1
+        // ----------
+        glm::vec3 edge1 = pos2 - pos1;
+        glm::vec3 edge2 = pos3 - pos1;
+        glm::vec2 deltaUV1 = uv2 - uv1;
+        glm::vec2 deltaUV2 = uv3 - uv1;
+
+        float f = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
+
+        tangent1.x = f * (deltaUV2.y * edge1.x - deltaUV1.y * edge2.x);
+        tangent1.y = f * (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y);
+        tangent1.z = f * (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z);
+
+        bitangent1.x = f * (-deltaUV2.x * edge1.x + deltaUV1.x * edge2.x);
+        bitangent1.y = f * (-deltaUV2.x * edge1.y + deltaUV1.x * edge2.y);
+        bitangent1.z = f * (-deltaUV2.x * edge1.z + deltaUV1.x * edge2.z);
+
+        // triangle 2
+        // ----------
+        edge1 = pos3 - pos1;
+        edge2 = pos4 - pos1;
+        deltaUV1 = uv3 - uv1;
+        deltaUV2 = uv4 - uv1;
+
+        f = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
+
+        tangent2.x = f * (deltaUV2.y * edge1.x - deltaUV1.y * edge2.x);
+        tangent2.y = f * (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y);
+        tangent2.z = f * (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z);
+
+
+        bitangent2.x = f * (-deltaUV2.x * edge1.x + deltaUV1.x * edge2.x);
+        bitangent2.y = f * (-deltaUV2.x * edge1.y + deltaUV1.x * edge2.y);
+        bitangent2.z = f * (-deltaUV2.x * edge1.z + deltaUV1.x * edge2.z);
+
+
+        float quadVertices[] = {
+                // positions            // normal         // texcoords  // tangent                          // bitangent
+                pos1.x, pos1.y, pos1.z, nm.x, nm.y, nm.z, uv1.x, uv1.y, tangent1.x, tangent1.y, tangent1.z, bitangent1.x, bitangent1.y, bitangent1.z,
+                pos2.x, pos2.y, pos2.z, nm.x, nm.y, nm.z, uv2.x, uv2.y, tangent1.x, tangent1.y, tangent1.z, bitangent1.x, bitangent1.y, bitangent1.z,
+                pos3.x, pos3.y, pos3.z, nm.x, nm.y, nm.z, uv3.x, uv3.y, tangent1.x, tangent1.y, tangent1.z, bitangent1.x, bitangent1.y, bitangent1.z,
+
+                pos1.x, pos1.y, pos1.z, nm.x, nm.y, nm.z, uv1.x, uv1.y, tangent2.x, tangent2.y, tangent2.z, bitangent2.x, bitangent2.y, bitangent2.z,
+                pos3.x, pos3.y, pos3.z, nm.x, nm.y, nm.z, uv3.x, uv3.y, tangent2.x, tangent2.y, tangent2.z, bitangent2.x, bitangent2.y, bitangent2.z,
+                pos4.x, pos4.y, pos4.z, nm.x, nm.y, nm.z, uv4.x, uv4.y, tangent2.x, tangent2.y, tangent2.z, bitangent2.x, bitangent2.y, bitangent2.z
+        };
+        // configure plane VAO
+        glGenVertexArrays(1, &quadVAO);
+        glGenBuffers(1, &quadVBO);
+        glBindVertexArray(quadVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)(3 * sizeof(float)));
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)(6 * sizeof(float)));
+        glEnableVertexAttribArray(3);
+        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)(8 * sizeof(float)));
+        glEnableVertexAttribArray(4);
+        glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)(11 * sizeof(float)));
+    }
+    glBindVertexArray(quadVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindVertexArray(0);
 }
